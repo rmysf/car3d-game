@@ -30,8 +30,9 @@ public class mobil : MonoBehaviour
 
     [Header("--- UI ---")]
     [SerializeField] private TextMeshProUGUI teksTimer;
-    [SerializeField] private TextMeshProUGUI teksGameOver;
     [SerializeField] private TextMeshProUGUI teksCountdown;
+    [SerializeField] private GameObject panelGameOver;       // panel utama game over
+    [SerializeField] private TextMeshProUGUI textGameOver;   // teks di dalam PanelGameOver (judul + waktu)
 
     [HideInInspector] public bool gameOver  = false;
     [HideInInspector] public bool gameReady = false;
@@ -46,8 +47,9 @@ public class mobil : MonoBehaviour
     {
         countdown = durasiCountdown;
 
-        if (teksGameOver != null)
-            teksGameOver.gameObject.SetActive(false);
+        // Pastikan PanelGameOver hilang saat game baru mulai
+        if (panelGameOver != null)
+            panelGameOver.SetActive(false);
 
         if (teksTimer != null)
             teksTimer.text = "Survive: 00:00";
@@ -208,13 +210,20 @@ public class mobil : MonoBehaviour
         rearLeftWheelCollider.brakeTorque   = brakeForce;
         rearRightWheelCollider.brakeTorque  = brakeForce;
 
-        if (teksGameOver != null)
+        // Pastikan teks countdown awal sudah tidak tampil lagi
+        if (teksCountdown != null)
+            teksCountdown.gameObject.SetActive(false);
+
+        // Tampilkan PanelGameOver saat player tertangkap
+        if (panelGameOver != null)
+            panelGameOver.SetActive(true);
+
+        if (textGameOver != null)
         {
             int menit = Mathf.FloorToInt(timerSurvive / 60f);
             int detik = Mathf.FloorToInt(timerSurvive % 60f);
-            teksGameOver.gameObject.SetActive(true);
-            teksGameOver.text = string.Format(
-                "<size=52>TERTANGKAP!</size>\n\n<color=#EF9F27><size=42>{0:00}:{1:00}</size></color>\n\n<color=#aaaaaa><size=22>[ R ] untuk Restart</size></color>",
+            textGameOver.text = string.Format(
+                "<size=52>TERTANGKAP!</size>\n\n<color=#EF9F27><size=42>Survive: {0:00}:{1:00}</size></color>",
                 menit, detik
             );
         }

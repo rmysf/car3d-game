@@ -30,9 +30,14 @@ public class PoliceCarAI : MonoBehaviour
     [Tooltip("Kekuatan tabrakan minimum untuk game over. Serempet pelan = polisi tetap ngejar.")]
     [SerializeField] private float minImpulseTangkap = 500f;
 
-    [Header("--- EFEK SIRINE (Opsional) ---")]
+    [Header("--- EFEK SIRINE (Lampu) ---")]
     [SerializeField] private Light lampuSiren;
     [SerializeField] private float kecepatanKedip = 3f;
+
+    [Header("--- EFEK SIRINE (Audio) ---")]
+    [SerializeField] private AudioSource audioSirine;
+    [SerializeField] private AudioClip   klipSirine;
+    [SerializeField] private AudioClip   klipTangkap;
 
     private mobil     playerScript;
     private Rigidbody playerRb;
@@ -70,6 +75,15 @@ public class PoliceCarAI : MonoBehaviour
 
         if (lampuSiren != null)
             lampuSiren.enabled = false;
+
+        if (audioSirine != null && klipSirine != null)
+        {
+            audioSirine.clip = klipSirine;
+            audioSirine.loop = true;
+        }
+
+        if (AudioManager.Instance != null)
+            AudioManager.Instance.StopMusic();
     }
 
     void Update()
@@ -80,6 +94,7 @@ public class PoliceCarAI : MonoBehaviour
         if (playerScript.gameOver) return;
 
         EfekSiren(true);
+        MulaiSuaraSirine();
 
         float jarak = Vector3.Distance(transform.position, targetPlayer.position);
         if (jarak <= jarakTangkap)
@@ -107,23 +122,18 @@ public class PoliceCarAI : MonoBehaviour
         float kecepatanPlayer = playerRb != null ? playerRb.linearVelocity.magnitude : 0f;
         float kecepatanPolisi = policeRb != null ? policeRb.linearVelocity.magnitude : 0f;
 
-        // Target kecepatan polisi = kecepatan player - selisih
         float targetKecepatan = Mathf.Max(0f, kecepatanPlayer - selisihDariPlayer);
 
-        // Jika polisi lebih lambat dari target → tambah gas
-        // Jika polisi sudah cukup cepat → kurangi gas
         float targetForce = kecepatanPolisi < targetKecepatan
             ? motorForceMaksimal
             : motorForceAwal;
 
-        // Lerp perlahan agar tidak langsung full gas
         motorForceSaatIni = Mathf.Lerp(
             motorForceSaatIni,
             targetForce,
             Time.deltaTime * kecepatanAdaptasi
         );
 
-        // Clamp agar tidak melebihi batas
         motorForceSaatIni = Mathf.Clamp(motorForceSaatIni, motorForceAwal, motorForceMaksimal);
     }
 
@@ -132,10 +142,8 @@ public class PoliceCarAI : MonoBehaviour
     // -------------------------------------------------------
     void HandleSteering()
     {
-        // Konversi posisi player ke arah lokal polisi
         Vector3 arahLokal = transform.InverseTransformPoint(targetPlayer.position);
 
-        // Hitung sudut belok berdasarkan posisi relatif
         float sudut = Mathf.Atan2(arahLokal.x, arahLokal.z) * Mathf.Rad2Deg;
         float targetSteer = Mathf.Clamp(sudut, -maxSteerAngle, maxSteerAngle);
 
@@ -148,13 +156,11 @@ public class PoliceCarAI : MonoBehaviour
     // -------------------------------------------------------
     void HandleMotor()
     {
-        // Cek apakah player ada di depan atau belakang polisi
         Vector3 arahLokal = transform.InverseTransformPoint(targetPlayer.position);
         bool playerDiDepan = arahLokal.z > 0;
 
         if (playerDiDepan)
         {
-            // Gas maju
             rearLeftWheelCollider.motorTorque  = motorForceSaatIni;
             rearRightWheelCollider.motorTorque = motorForceSaatIni;
             rearLeftWheelCollider.brakeTorque  = 0f;
@@ -164,7 +170,6 @@ public class PoliceCarAI : MonoBehaviour
         }
         else
         {
-            // Player di belakang → rem dulu lalu balik arah
             rearLeftWheelCollider.motorTorque  = 0f;
             rearRightWheelCollider.motorTorque = 0f;
             rearLeftWheelCollider.brakeTorque  = brakeForce;
@@ -195,7 +200,7 @@ public class PoliceCarAI : MonoBehaviour
     }
 
     // -------------------------------------------------------
-    // Efek sirine
+    // Efek sirine (lampu)
     // -------------------------------------------------------
     void EfekSiren(bool aktif)
     {
@@ -213,6 +218,22 @@ public class PoliceCarAI : MonoBehaviour
     }
 
     // -------------------------------------------------------
+    // Efek sirine (audio)
+    // -------------------------------------------------------
+    void MulaiSuaraSirine()
+    {
+        if (audioSirine == null || klipSirine == null) return;
+        if (!audioSirine.isPlaying)
+            audioSirine.Play();
+    }
+
+    void HentikanSuaraSirine()
+    {
+        if (audioSirine == null) return;
+        audioSirine.Stop();
+    }
+
+    // -------------------------------------------------------
     // Tangkap player
     // -------------------------------------------------------
     void TangkapPlayer()
@@ -220,13 +241,16 @@ public class PoliceCarAI : MonoBehaviour
         if (sudahTangkap) return;
         sudahTangkap = true;
 
-        // Hentikan semua roda
         rearLeftWheelCollider.motorTorque  = 0f;
         rearRightWheelCollider.motorTorque = 0f;
         frontLeftWheelCollider.brakeTorque  = brakeForce;
         frontRightWheelCollider.brakeTorque = brakeForce;
         rearLeftWheelCollider.brakeTorque   = brakeForce;
         rearRightWheelCollider.brakeTorque  = brakeForce;
+
+        HentikanSuaraSirine();
+        if (audioSirine != null && klipTangkap != null)
+            audioSirine.PlayOneShot(klipTangkap);
 
         Debug.Log("[PoliceCarAI] Player tertangkap!");
         if (playerScript != null)
@@ -237,9 +261,6 @@ public class PoliceCarAI : MonoBehaviour
     {
         if (!collision.gameObject.CompareTag("Player")) return;
 
-        // Hanya tangkap jika nabrak dengan cukup kencang
-        // impulse kecil = serempet → polisi tetap ngejar
-        // impulse besar = tabrakan beneran → game over
         float kekuatanTabrakan = collision.impulse.magnitude;
         if (kekuatanTabrakan > minImpulseTangkap)
             TangkapPlayer();
